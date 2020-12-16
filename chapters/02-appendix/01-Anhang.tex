@@ -1,0 +1,38 @@
+%********************************************************************
+% Appendix
+%*******************************************************
+% If problems with the headers: get headings in appendix etc. right
+%\markboth{\spacedlowsmallcaps{Appendix}}{\spacedlowsmallcaps{Appendix}}
+\chapter{Anhang}
+\section{Kubernetes Persistenzlösungen}
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{lcccc} \hline
+    \textbf{Volume Plugin} & \textbf{On-Premises} & \textbf{RWO} & \textbf{ROX} & \textbf{RWX}\\ \hline
+    AWSElasticBlockStore & & x & & \\
+    AzureFile & & x & x & x \\
+    AzureDisk & & x & & \\
+    CephFS & x & x & x & x\\
+    CSI & \multicolumn{4}{c}{Abhängig von Treiber} \\
+    Cinder & x & x & & \\
+    emptyDir & x & x& & \\
+    FC & x & x & x & \\
+    Flexvolume & \multicolumn{4}{c}{Abhängig von Treiber} \\
+    Flocker & x & x & & \\
+    GCEPersistentDisk & & x & x& \\
+    Glusterfs & x & x & x& x\\
+    HostPath & x & x & & \\
+    iSCSI & x & x &x & \\
+    %local & x & x& &\\
+    Quobyte & x & x & x& x\\
+    NFS & x & x & x& x\\
+    RBD & x & x &x & \\
+    VsphereVolume & x & x & & \\
+    PortworxVolume & x & x & & x \\
+    ScaleIO & x & x & x& \\
+    StorageOS & x & x & & \\
+
+	 \end{tabular}
+    \caption{Volume Plugins in der Kubernetes Dokumentation}
+    \label{marktuebersicht}
+ \end{table}

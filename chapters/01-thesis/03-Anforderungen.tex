@@ -1,0 +1,137 @@
+\chapter{Anforderungsanalyse}
+\label{cha:anfoderungen}
+Dieses Kapitel der Thesis untersucht die Anforderungen an die persistente Speicherung von Daten. Dafür wird zunächst das Projekt betrachtet und die zu erwartenden Anwendungsfälle analysiert. Anschließend werden darauf aufbauend die Anforderungen für die Persistenzlösung formuliert.
+
+\section{Das Projekt}
+\label{projekt}
+Die Idee der ALM v2.0 ist eine \ac{ALM} Umgebung für die automatisierte Installation und Konfiguration eines Atlassian Stacks durch eine Container Orchestration Lösung. Ziel ist, den Prozess der Bereitstellung, welcher vorher mehrere Tage in Anspruch genommen hat, auf eine möglich kurze Zeit zu reduzieren. Der Atlassian Stack ist eine Tool-Sammlung des Softwareherstellers Atlassian, welche den Prozess der Produkt- und Softwareentwicklung begleitet. \medskip
+
+Um dieses Ziel umzusetzen, wurden die Prozesse der Installation und Konfiguration automatisiert und die grundlegende Infrastruktur verändert. Während zuvor für jede Anwendung eine einzelne virtuelle Maschine erstellt wurde, werden in der prototypischen Umsetzung der ALM v2.0 die containerisierten Anwendungen gestartet. Dafür wurden zunächst Container erstellt, die über ein Dockerfile (siehe \ref{subsec:dockerfile}) die Anwendungen installieren und für den ersten Start konfigurieren. Basierend auf diesen Containern wurden anschließend Helm Charts (siehe \ref{helm:chart}) entworfen, welche neben den Anwendungen selbst noch einen vorgefertigten Datenbank-Container und einen weiteren Container für die Erstkonfiguration der Anwendung durch ein in Python entworfenes Script enthalten. \medskip
+
+Um den Zustand der ausgeführten Anwendungen zu bewahren, werden die Anwendung und die Datenbank als StatefulSet gestartet (siehe \ref{kube:statefulset}). Neben einer eindeutigen Identifizierung der Anwendung ermöglicht dies die erneute Zuteilung des dynamisch erstellten Datenträgers. Um die Helm Charts anschließend auszuführen, steht ein Kubernetes Cluster bereit, welches verteilt auf mehreren virtuellen Maschinen läuft. Für die persistente Speicherung der Daten wird zurzeit ein ebenfalls auf einer virtuellen Maschine laufender einzelner \ac{NFS} Server genutzt.
+ 
+\section{Anwendungsfälle}
+Bevor Anforderungen für das Projekt aufgestellt werden, muss betrachtet werden, in welchen Situationen die Lösung eingesetzt wird. Dies geschieht, indem die zu erwarteten Anwendungsfälle betrachtet werden. Für die Auswahl einer Lösung für die persistente Speicherung von Daten in einem Cluster werden dabei nicht nur Situationen während des Betriebs von Anwendungen sondern auch die Installation und die Wartung betrachtet. Aus den beispielhaften Szenarien werden anschließend die Anforderungen extrahiert.
+
+\subsection{Auswahl, Installation und Betrieb der Speicherlösung}
+Für die ausgewählte Persistenzlösung steht bestehende Infrastruktur bereit. Da auf der Infrastruktur sowohl das Kubernetes Cluster als auch verschiedene andere Anwendungen betrieben werden, ist zu überprüfen, welche Ressourcen zur Verfügung stehen, und mit dem Bedarf abzugleichen. Um auf mögliche Veränderungen der Infrastruktur oder der Auslastung des Clusters zu reagieren, soll die Lösung skalierbar sein.
+
+\subsection{Ausführen von Stateful Anwendungen}
+Die Hauptaufgabe des Kubernetes Clusters ist das Ausführen von Anwendungen. Dabei handelt es sich aktuell größtenteils um Stateful Anwendungen. Im späteren Verlauf des Projekts sollen einige Anwendungen selbst in einem Cluster ausgeführt werden, um neue Funktionen wie das Zero-Downtime Upgrade zu nutzen. Dafür muss, um die Daten der Anwendungen synchron zu halten, zusätzlich in jeder Instanz der Anwendung der gleiche Speicher eingebunden werden. Neben den Anwendungen selbst wird darüber hinaus oft noch eine Datenbank benötigt. Beide Pods benötigen das persistente Speichern ihrer Daten, um einen stabilen Betrieb zu gewährleisten. Um die Chance auf Ausfälle gering zu halten, soll die Software bereits in einer stabilen Version vorliegen.
+
+\subsection{Veränderung von Dateien auf dem Dateisystem der Pods}
+Neben dem Betrieb der Anwendungen selbst, ist vor allem die Konfiguration dieser wichtig. Einige Einstellungen lassen sich nur durch das Verändern der Daten auf Dateisystemebene der Anwendung konfigurieren. Ein Nutzer, der administrativen Zugriff auf die Anwendung hat, soll, ohne administrativen Zugriff auf das Kubernetes Cluster zu benötigen, die Daten anpassen können.
+
+\subsection{Sicherheit der Daten}
+Die persistent gespeicherten Daten sollen auch bei Ausfällen oder Fehlern im System erhalten bleiben. Unabhängig davon durch welche Funktionen oder Technologien dieses Problem gelöst wird, muss die Reaktion des Systems zuverlässig sein.
+
+\section{Anforderungen}
+Aufbauend auf den beispielhaften Anwendungsfällen lassen sich die Anforderungen ableiten. Diese werden näher beschrieben und in zwei Kategorien eingeteilt.
+
+\subsection{Funktionale Anforderungen} % (fold)
+\label{sec:funktionale}
+Funktionale Anforderungen sind Anforderungen, welche Funktionen oder Dienste der Persistenzlösung näher spezifizieren. Um die Anzahl an möglichen Speicherlösungen einzugrenzen, werden sie zu Beginn anhand der funktionalen Anforderungen verglichen.
+
+\subsubsection{Mehrfachzugriff auf den eingebundenen Speicher}
+Um dem Nutzer die Möglichkeit zu geben, die Anwendung ohne administrativen Zugriff auf das Cluster selbst zu konfigurieren, ist es nötig, ihm Zugriff zum Speicher zu gewähren. Dabei soll es sich um eine Schnittstelle handeln, auf die ohne großen Aufwand zugegriffen werden können. Eine Option wäre es, Speicher zu verwenden, die mehrfach eingebunden werden können. Dies hätte ebenfalls zur Folge, dass die Speicherlösung im späteren Verlauf des Projekts, wenn die Anwendungen im Cluster ausgeführt werden, verwendet werden kann. Die Persistenzlösung soll daher eine Lösung sein, welche mehrfache Schreib- und Lesezugriffe unterstützt, also den Zugriffsmodus \ac{RWX} unterstützt (siehe \ref{kube:pvc}).
+
+\subsubsection{On-Premises}
+Eine weitere Anforderung ist das Verwenden der bestehenden Systeme. Die Software soll daher On-Premise, also lokal, im internen Netzwerk betrieben werden. Auch wenn zurzeit eine Verbindung zum Internet besteht, soll sie auch ohne diese funktional sein.
+
+\subsection{Nichtfunktionale Anforderungen} % (fold)
+\label{sec:nichtfunktionale}
+Neben den funktionalen Anforderungen, welche sich oft aus einer Funktion oder einem Dienst ableiten, gibt es die nichtfunktionalen Anforderungen. Diese enthalten zusätzliche Voraussetzungen wie Qualitätsmerkmale oder Einschränkungen.
+
+\subsubsection{Ausfallsicherheit}
+Um einen fehlerfreien Betrieb zu gewährleisten, sollte die Software eine hohe Verfügbarkeit aufweisen. Durch eine hochverfügbare Architektur und das Verwenden von Redundanzen kann auf Ausfälle von einzelnen Festplatten oder ganzen Servern reagiert werden. Dabei ist darauf zu achten, dass die Redundanzen auf möglichst vielen verschiedenen Servern platziert werden, um einen \ac{SPoF} zu vermeiden. \medskip
+
+Die Ausfallsicherheit gilt als erfüllt, wenn die Software sowohl automatisch Redundanzen erzeugt als auch eine hochverfügbare Architektur aufweist oder andere technische Vorkehrungen für eine hohe Verfügbarkeit trifft. 
+
+\subsubsection{Datensicherung}
+Für die Evaluation der Persistenzlösung werden hier die technischen Maßnahmen für Sicherungen der Daten betrachtet. Dafür ist zu prüfen, mit welchem Aufwand automatische, regelmäßige Datensicherungen erstellt werden können, sowie um welche Art von Backup es sich handelt. Unterschieden werden kann hier zwischen vollständigen und inkrementellen Backups. Auch der Wiederherstellungsprozess soll einfach ausführbar sein. Neben Sicherungen können Funktionen wie Snapshots für Tests der im Cluster laufenden Anwendungen hilfreich sein, da sie ermöglichen zwischen verschiedenen Ständen der Daten zu wechseln.  \medskip
+
+Die Anforderung gilt daher als erfüllt, wenn die Speicherlösung automatisierte Sicherungen erstellen und wiederherstellen kann. Zusätzlich sollte sie ebenfalls eine Funktion zum Erstellen von Snapshots bieten.
+
+\subsubsection{Datenintegrität}
+Die Datenintegrität stellt die Unversehrtheit der Daten dar. Die Software soll automatisiert fehlerhafte Daten erkennen und entweder den Anwender benachrichtigen oder sie korrigieren. Dafür ist zu betrachten, welche Funktionen oder Algorithmen existieren, um korrupte Daten aufzuspüren.
+
+\subsubsection{Skalierbarkeit}
+Um auf Änderungen der vom Cluster benötigten Speicherkapazität oder Leistung reagieren zu können, sollte die Lösung skalierbar sein. Die Lösung sollte sich sowohl vertikal, durch das Hinzufügen von Ressourcen zu einem bestehenden Server, als auch horizontal, durch das Hinzufügen von weiteren Servern, erweitern lassen.
+
+\subsubsection{Geringer Ressourcenbedarf}
+Die Software soll auf einem bereits bestehenden System eingesetzt werden. Um dabei einen stabilen Betrieb des Kubernetes Clusters sowie auch anderer Anwendungen zu gewährleisten, muss auf den Ressourcenbedarf geachtet werden. \medskip 
+
+Die Speicherlösung soll, unabhängig von der Anzahl der Nodes und der Kapazität der Festplatte, vorerst nicht mehr als vier Gigabyte Arbeitsspeicher und vier Prozessorkerne benötigen.
+
+\subsubsection{Benutzerfreundlichkeit}
+Um die Benutzerfreundlichkeit näher zu bewerten, ist zu klären, aus welcher Perspektive diese bewertet wird. Den Nutzern der Anwendungen des Kubernetes Clusters bleibt die Speicherlösung bis auf das Einbinden des Speichers eines Pods, um Dateien über ein Protokoll wie \ac{NFS} zu modifizieren, verborgen. Daher bewertet die Benutzerfreundlichkeit vor allem die Einfachheit der Installation und Wartung während des Betriebs.  \medskip
+
+In der folgenden Evaluation wird vor allem das Vorhandensein einer Dokumentation und von Scripts für eine automatische Installation und Wartung betrachtet. 
+
+\subsubsection{Wartbarkeit}
+Neben der Einfachheit der Wartung gibt es vieles, um die Fehleranfälligkeit zu verringern und somit die Wartbarkeit zu verbessern. So bietet eine Persistenzlösung, welche bereits lange am Markt etabliert ist, viele Erfahrungsberichte und oft auch eine gute Dokumentation. Auch kann die Nutzung einer als stabil markierten Version die Fehleranfälligkeit verringern und so für eine seltenere Wartung sorgen. Zusätzlich ist zu betrachten, ob die Lösung Open-Source ist oder von einem Unternehmen entwickelt wird. Ist eine Lösung Open-Source, so kann die Community den Quellcode einsehen und an der Entwicklung oder Korrektur von Fehlern teilhaben. Zusätzlich kann eine Schnittstelle für Monitoring die Fehlersuche erleichtern.
+
+\section{Zusammenfassung der Anforderungen} % (fold)
+\label{sec:uebersichtanfoderungen}
+In der Tabelle \ref{listeanforderungen} werden die in \ref{sec:funktionale} und \ref{sec:nichtfunktionale} genannten Anforderungen aufgelistet.
+Neben einer Nummer für die Identifizierung erhalten die nichtfunktionalen Anforderungen eine weitere Spalte mit technischen Anforderungen. Werden diese erfüllt, gilt die nichtfunktionale Anforderung ebenfalls als erfüllt.
+
+%Aufgrund der, im Vergleich zu den anderen Anforderungen, geringen Priorität, fließt diese Anforderung allerdings nicht direkt in die Bewertung rein und wird vor allem in der Zusammenfassung der Bewertung, sowie in der Handlungsempfehlung erwähnt.
+%evtl erweitern um zukunftsicherherug
+
+\begin{table}[htbp]
+\centering
+\resizebox{\linewidth}{!}{%}
+\begin{tabular}{lll}\hline
+\textbf{ID} & \textbf{Beschreibung} &  \\ \hline
+\multicolumn{3}{l}{Funktionale Anforderungen}\\ \hline
+01 & On-Premises Hosting & \\
+02 & Mehrfaches Einbinden des Speichers & \\
+\\ \hline
+\multicolumn{2}{l}{Nichtfunktionale Anforderungen} & Technische Anforderungen\\ \hline
+03 & Ausfallsicherheit & \\ \hline
+&& Redundanzen\\
+&& Hochverfügbarkeit\\ \hline
+04 & Datensicherung & \\ \hline
+&& Automatische Sicherung\\
+&& Fehlerfreie Wiederherstellung \\
+&& Snapshots \\ \hline
+05 & Datenintegrität & \\ \hline
+&& Fehlererkennung\\
+&& Fehlerkorrektur\\ \hline
+06 & Skalierbarkeit & \\ \hline
+&& Vertikale Skalierbarkeit \\
+&& Horizontale Skalierbarkeit \\ \hline
+07 & Geringer Ressourcenbedarf & \\ \hline
+&& Ressourcenbedarf maximal\\
+&& vier Cores und vier GB Arbeitsspeicher \\ \hline
+08 & Benutzerfreundlichkeit&  \\ \hline
+&& Automatisierte Installation\\
+&& Automatisierte Wartung \\ \hline
+09 & Wartbarkeit &  \\ \hline
+&& Stabile Version\\
+&& Etablierte Software \\
+&& Dokumentation \\
+&& Open-Source \\
+\end{tabular}}
+\caption{Liste der Anforderungen}
+\label{listeanforderungen}
+\end{table}
+
+
+% Kosten?
+% Zukunftsicherheit
+% evtl - o + 
+% negativ = nicht vorhanden, o durch zusätzliche Software und + bereits intergriert.
+% Bewertung erklären oder bei evaluation
+%evtl erweitern um zukunftsicherherug
+%@Wartbarkeit
+%Opensoucrce, Öffentlich Dokumentation
+%	Vorerst verzicht auf bezahlten Support
+%Stabile Vertsion? % 
+%Kosten?
+% Zukunftsicherheit
+% evtl - o + 
+% Split brain?
+% negativ = nicht vorhanden, o durch zusätzliche Software und + bereits intergriert.
+% Bewertung erklären oder bei evaluation

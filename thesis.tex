@@ -44,10 +44,17 @@
 \input{hdathesis-config}
 \input{classicthesis-config}
 
+%
+% Zusazt
+%
+\setlength{\parindent}{0pt} % Verhinder einrücken bei neuen Absatu
+
+
 %*************************************************************************
 % Bibliographies
 %*************************************************************************
 \addbibresource{bibliography.bib}
+\addbibresource{bibliographymendenly.bib}
 
 %*************************************************************************
 % Hyphenation
@@ -68,11 +75,16 @@
 %*************************************************************************
 % Frontmatter
 %*************************************************************************
+%\pagenumbering{gobble}
+%\clearpage\null\newpage % Leere Deckblatt
+%\pagenumbering{roman}
+\cleardoublepage
 \include{frontbackmatter/Titlepage}
-\include{frontbackmatter/Titleback}
+%\include{frontbackmatter/Titleback}
 %\cleardoublepage\include{frontbackmatter/Dedication}
 %\cleardoublepage\include{frontbackmatter/Foreword}
 \cleardoublepage\include{frontbackmatter/Declaration}
+%\cleardoublepage\include{frontbackmatter/Sperrvermerk}
 \cleardoublepage\include{frontbackmatter/AbstractEN}
 \cleardoublepage\include{frontbackmatter/AbstractDE}
 %\cleardoublepage\include{frontbackmatter/Publications}
@@ -91,9 +103,20 @@
 % Alwas use \cleardoublepage before \part{...}.
 \cleardoublepage
 \part{Thesis}\label{pt:thesis}
-\include{chapters/examples/chapter01}
-\include{chapters/examples/chapter02}
-\include{chapters/examples/chapter03}
+\include{chapters/01-thesis/01-Einleitung}
+\include{chapters/01-thesis/02-Grundlagen}
+\include{chapters/01-thesis/03-Anforderungen}
+\include{chapters/01-thesis/04-Evaluation}
+\include{chapters/01-thesis/05-Implemantation}
+\include{chapters/01-thesis/06-Schluss}
+%\include{chapters/examples/chapter01}
+%\include{chapters/examples/chapter02}
+%\include{chapters/examples/chapter03}
+%*************************************************************************
+% Other Stuff in the Back
+%*************************************************************************
+\cleardoublepage\include{frontbackmatter/Bibliography}
+
 %*************************************************************************
 % Backmatter
 %*************************************************************************
@@ -101,12 +124,10 @@
 %\renewcommand{\thechapter}{\alph{chapter}}
 \cleardoublepage
 \part{Appendix}
-\include{chapters/examples/appendix01}
-\include{chapters/examples/appendix02}
-%*************************************************************************
-% Other Stuff in the Back
-%*************************************************************************
-\cleardoublepage\include{frontbackmatter/Bibliography}
+\include{chapters/02-appendix/01-Anhang}
+%\include{chapters/examples/appendix01}
+%\include{chapters/examples/appendix02}
+
 %*************************************************************************
 % Game Over: Restore, Restart, or Quit?
 %*************************************************************************

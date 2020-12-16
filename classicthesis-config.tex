@@ -80,15 +80,20 @@
 % Spanish languages need extra options in order to work with this template
 %\PassOptionsToPackage{spanish,es-lcroman}{babel}
 \usepackage{babel}
-
+% Anpassung der Häufigkeit von Silbentrennung
+\pretolerance=1000
+\emergencystretch=0pt
+\righthyphenmin=4
+\lefthyphenmin=4
+% - Anpassung ende
 \usepackage{csquotes}
 
 \PassOptionsToPackage{%
   %backend=biber,bibencoding=utf8, %instead of bibtex
   backend=bibtex8,bibencoding=ascii,%
   language=auto,%
-  style=numeric-comp,%
-  %style=alphabetic,%
+  %style=numeric-comp,%
+  style=alphabetic,%
   %style=authoryear-comp, % Author 1999, 2010
   %bibstyle=authoryear,dashed=false, % dashed: substitute rep. author with ---
   sorting=nyt, % name, year, title
@@ -96,7 +101,16 @@
   %backref=true,%
   natbib=true % natbib compatibility mode (\citep and \citet still work)
 }{biblatex}
-  \usepackage{biblatex}
+\usepackage{biblatex}
+
+% If you want to break on URL numbers
+\setcounter{biburlnumpenalty}{100}
+% If you want to break on URL lower case letters
+\setcounter{biburllcpenalty}{100}
+% If you want to break on URL UPPER CASE letters
+\setcounter{biburlucpenalty}{100}
+
+
 
 \PassOptionsToPackage{fleqn}{amsmath}       % math environments and more by the AMS
   \usepackage{amsmath}
@@ -168,9 +182,62 @@
   breaklines=true,
   %frameround=ftff,
   %frame=single,
-  belowcaptionskip=.75\baselineskip
+  belowcaptionskip=.75\baselineskip,
+  aboveskip=.75\baselineskip
   %frame=L
 }
+
+\lstset{numbers=left, numberstyle=\tiny, numbersep=10pt, stepnumber=1, keywordstyle=\color{black}\bfseries\itshape, stringstyle=\ttfamily,showstringspaces=false,basicstyle=\footnotesize,captionpos=b}
+\lstset{language=java}
+
+\lstdefinelanguage{Dockerfile}
+{
+  morekeywords={FROM, RUN, CMD, LABEL, MAINTAINER, EXPOSE, ENV, ADD, COPY,
+    ENTRYPOINT, VOLUME, USER, WORKDIR, ARG, ONBUILD, STOPSIGNAL, HEALTHCHECK,
+    SHELL},
+  morecomment=[l]{\#},
+  morestring=[b]"
+}
+
+\newcommand\YAMLcolonstyle{\color{red}\mdseries}
+\newcommand\YAMLkeystyle{\color{black}\bfseries}
+\newcommand\YAMLvaluestyle{\color{black}\mdseries}
+
+\makeatletter
+
+% here is a macro expanding to the name of the language
+% (handy if you decide to change it further down the road)
+\newcommand\language@yaml{yaml}
+
+\expandafter\expandafter\expandafter\lstdefinelanguage
+\expandafter{\language@yaml}
+{
+  keywords={true,false,null,y,n},
+  keywordstyle=\color{darkgray}\bfseries,
+  basicstyle=\YAMLkeystyle,                                 % assuming a key comes first
+  sensitive=false,
+  comment=[l]{\#},
+  morecomment=[s]{/*}{*/},
+  commentstyle=\color{purple}\ttfamily,
+  stringstyle=\YAMLvaluestyle\ttfamily,
+  moredelim=[l][\color{orange}]{\&},
+  moredelim=[l][\color{magenta}]{*},
+  moredelim=**[il][\YAMLcolonstyle{:}\YAMLvaluestyle]{:},   % switch to value style at :
+  morestring=[b]',
+  morestring=[b]",
+  literate =    {---}{{\ProcessThreeDashes}}3
+                {>}{{\textcolor{red}\textgreater}}1     
+                {|}{{\textcolor{red}\textbar}}1 
+                {\ -\ }{{\mdseries\ -\ }}3,
+}
+
+% switch to key style at EOL
+\lst@AddToHook{EveryLine}{\ifx\lst@language\language@yaml\YAMLkeystyle\fi}
+\makeatother
+
+\newcommand\ProcessThreeDashes{\llap{\color{cyan}\mdseries-{-}-}}
+
+
 % ****************************************************************************************************
 
 
@@ -195,7 +262,7 @@
 % ********************************************************************
 \hypersetup{%
   %draft, % hyperref's draft mode, for printing see below
-  colorlinks=true, linktocpage=true, pdfstartpage=3, pdfstartview=FitV,%
+  colorlinks=true, linktocpage=true, pdfstartpage=1, pdfstartview=FitV,%
   % uncomment the following line if you want to have black links (e.g., for printing)
   %colorlinks=false, linktocpage=false, pdfstartpage=3, pdfstartview=FitV, pdfborder={0 0 0},%
   breaklinks=true, pdfpagemode=UseNone, pageanchor=true, pdfpagemode=UseOutlines,%
@@ -210,7 +277,7 @@
   pdfcreator={pdfLaTeX},%
   pdfproducer={LaTeX with hyperref and classicthesis}%
 }
-
+\usepackage{url}
 % ********************************************************************
 % Setup autoreferences
 % ********************************************************************
@@ -290,6 +357,7 @@
 %\usepackage[urw-garamond]{mathdesign} <-- no osf support :-(
 %\usepackage[default,osfigures]{opensans} % scale=0.95
 %\usepackage[sfdefault]{FiraSans}
+\usepackage{times}
 % ********************************************************************
 % \usepackage[largesc,osf]{newpxtext}
 % Used to fix these:

@@ -1,0 +1,451 @@
+\chapter{Evaluation}
+\label{cha:evaluation}
+
+Dieser Abschnitt widmet sich der Evaluation der in Kubernetes existierenden Persistenzlösungen. Dafür werden zuerst die in der Kubernetes Dokumentation genannten Volume Plugins näher betrachtet. Die Lösungen, welche die funktionalen Anforderungen aus \ref{sec:funktionale} erfüllen, werden anschließend analysiert und danach anhand der in \ref{sec:nichtfunktionale} genannten nicht-funktionalen Anforderungen bewertet. Abschließend wird eine Handlungsempfehlung basierend auf den Ergebnissen der Evaluation formuliert.
+
+\section{Marktübersicht}
+Die Tabelle \ref{marktuebersicht} im Anhang zeigt die in der Kubernetes Dokumentation genannten Persistenzlösungen \cite{kube:volumes}. Für Lösungen, welche die \ac{CSI} oder Flexvolume Schnittstelle nutzen, wurde universal ein entsprechender Eintrag erstellt. Zusätzlich zu den Namen der Volume Plugins wurden Spalten für die funktionalen Anforderungen, also die Zugriffmodi und das On-Premise Hosting, erstellt. Dadurch ist bereits hier eine Eingrenzung möglich.
+
+% Mehr auf Tabelle im Ahang eingehen und weg zur zweiten Tabelle erklären
+% Kein CSI / FLexvolume da keine spezifische Lösung sondern platzhalter
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{lcccc} \hline
+\textbf{Volume Plugin} & \textbf{On-Premises} & \textbf{RWO} & \textbf{ROX} & \textbf{RWX}\\ \hline
+CephFS & x & x & x & x\\
+CSI & \multicolumn{4}{c}{Abhängig von Treiber} \\
+Flexvolume & \multicolumn{4}{c}{Abhängig von Treiber} \\
+GlusterFS & x & x & x& x\\
+Quobyte & x & x & x& x\\
+NFS & x & x & x& x\\
+PortworxVolume & x & x & & x \\
+
+\end{tabular}
+\caption{Persistenzlösungen, welche die funktionalen Anforderungen erfüllen}
+\label{marktuebersicht2}
+\end{table}
+Die Tabelle \ref{marktuebersicht2} zeigt die Lösungen, welche die funktionalen Anforderungen bereits erfüllen, und sich so für das existierende System eignen. Sowohl \ac{CSI} als Flexvolume bieten durch das Einbinden einer eigens oder von Dritten entwickelten Lösung, die Möglichkeit, die Anforderungen zu erfüllen. Da es sich dabei allerdings um keine spezifische Speicherlösung handelt, werden diese in der Evaluation nicht näher betrachtet. 
+
+\subsection{NFS}
+Das \ac{NFS} ist ein UNIX-Protokoll, welches den Zugriff auf Dateien über das Netzwerk ermöglicht. Dabei kann der Server Teile seines eigenen Dateisystems freigeben. Auf Clientseite wird ein Pfad über einen Befehl eingebunden. Anschließend kann auf die im eingebundenen Verzeichnis existierenden Ordner und Dateien zugegriffen werden, als wären sie eine lokal existierende Festplatte. Da es sich um ein Protokoll handelt, können die Daten von unterschiedlichen Programmen zur Verfügung gestellt werden, welche unterschiedliche Features ermöglichen.
+% Client Server, Speichern an zentralen Ort
+
+\subsubsection{Einbinden in Kubernetes}
+\label{eva:nfskube}
+Um einen bereits existierenden NFS Server in Kubernetes einzubinden und ihn für die dynamische Erstellung von Speicher zu Nutzen, wird neben einer \ac{SC} die Anwendung \textit{nfs-client-provisioner} benötigt. Dieser kann unter Hilfe von einem gleichnamigen Helm Chart installiert werden.
+\lstset{language=bash}
+\begin{lstlisting}[frame=hlrtb, caption={nfs-client-provisioner: Installation} ,backgroundcolor=\color{white}, label={lst:nfs}]
+$ helm install stable/nfs-client-provisioner --set nfs.server=172.168.10.100 --set nfs.path=/data/kubernetes
+\end{lstlisting}
+Für die Installation ist nur ein Kommando notwendig (Listing \ref{lst:nfs}). Über dieses Kommando werden zusätzliche Parameter wie die Netzwerkadresse des Servers, der Pfad der eingebunden werden soll und auch der Name der erstellten StorageClass (Listing \ref{lst:nfssc}) definiert.
+\lstset{language=yaml}
+\begin{lstlisting}[frame=hlrtb, caption={StorageClass nfs-client-provisioner} ,backgroundcolor=\color{white}, label={lst:nfssc}]
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs-sc
+provisioner: nfs-client-provisioner
+parameters:
+  archiveOnDelete: "false"
+\end{lstlisting}
+
+\subsection{GlusterFS}
+\label{subsec:gluster}
+Bei GlusterFS handelt es sich um eine Open-Source Persistenzlösung, welche ein skalierbares und verteiltes Dateisystem erzeugt, das es ermöglicht, Speicher von mehreren Servern als virtuelles Laufwerk zur Verfügung zu stellen \cite{Bertsche2018ClusterPostgreSQL}. Um ein vorhandenes System zu skalieren, kann die Speicherkapazität der einzelnen Nodes erweitert oder neue Nodes in das Cluster hinzugefügt werden. Im Gegensatz zu anderen Lösungen nutzt Gluster weder einen zentralen, noch einen verteilten Server für die Metadaten, sondern setzt den \ac{EHA} ein \cite{GlusterCloudArchitecture2}. Über diesen Algorithmus wird der Speicherort dem Dateinamen zugeordnet \cite{Peddemors2010SurveyStorage}. Um den Zugriff auf verschiedene Redundanzen von Daten zu ermöglichen, wird ein Load-Balancing verwendet. \medskip
+
+Gluster bietet für die virtuellen Laufwerke verschiedene Modi. Darunter befindet sich neben dem standardmäßig aktiven Verteilen über mehrere Server auch die Möglichkeit, Daten auf mehrere Server zu replizieren. Zusätzlich zu diesen Modis bietet die Lösung auch viele weitere Funktionen, wie Snapshots, Replikationen oder Quotas, um den Speicher von virtuellen Laufwerken oder auch Ordnern zu limitieren.
+
+\subsubsection{Einbinden in Kubernetes}
+Für die einfache Integration von GlusterFS in Kubernetes stehen mit \textit{gluster-kubernetes} einige Dateien und Skripte zur Verfügung \cite{gluster-kubernetes}. Dabei kann entweder ein bestehender GlusterFS-Verbund eingebunden oder in einem Kubernetes Clusters als DaemonSet gestartet werden. \medskip
+
+Das Listing \ref{lst:glustersc} zeigt beispielhaft eine \ac{SC} für GlusterFS. Hier wird über die Parameter der Zugriff auf das GlusterFS-Cluster konfiguriert. Dabei kann die Art der Authentifizierung sowie die Art des Speichers festgelegt werden.
+\lstset{language=yaml}
+\begin{lstlisting}[frame=hlrtb, caption={StorageClass GlusterFS} ,backgroundcolor=\color{white}, label={lst:glustersc}]
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: gluster-sc
+provisioner: kubernetes.io/glusterfs
+parameters:
+  resturl: "http://172.168.10.100:8080"
+  restuser: ""
+  secretNamespace: ""
+  secretName: ""
+  restauthenabled: "false"
+  volumetype: "replicate:2"
+allowVolumeExpansion: true
+\end{lstlisting}
+
+\subsection{Ceph}
+Ceph ist eine skalierbare, verteilte Speicher-Lösung \cite{Weil:2006:CSH:1298455.1298485}. Sie ist Open-Source und bietet eine aktive Community und vielversprechende Entwicklung \cite{Du2018Cider:Storage}. Die Anwendung bietet Interfaces für drei verschiedene Arten von Speicher (siehe \ref{sec:persitenz}). Darunter mit dem Ceph Object Gateway, ein S3-Kompatibler Object-Storage, mit CephFS, ein File-Storage und mit dem RADOS Block Device (RBD), ein Block-Storage. \medskip
+
+Ein Ceph Speicher-Cluster lässt sich in verschiedene Teile zerlegen. Für die Speicherung der Daten sind die intelligenten Object-Storage Devices (OSDs) zuständig \cite{Weil:2006:CSH:1298455.1298485}. Neben der Speicherung der Daten sind sie auch für die Migration, Replikation und Fehlerbehandlung von Daten sowie die Kommunikation untereinander zuständig. Die Metadaten werden auf den Metadata Servers (MDSs) gespeichert. Diese bearbeiten Zugriffe von Clients auf die Metadaten. Um eine Datei auf einem OSD zu finden, nutzen die MDSs, da sie den Ort der Datei nicht kennen, einen Algorithmus namens CRUSH. Dieser dient der pseudo-zufälligen Berechnung der Speicherorte von Objekten. Neben den OSDs und MDSs gibt es noch einen weiteren Daemon, der für die Überwachung des Zustands der Nodes zuständige Monitoring Software (MON) \cite[][]{cephcookbook}. 
+%evtl Crush erklären
+% Rados evtl
+% ack Commit \cite{Peddemors2010SurveyStorage}
+
+\subsubsection{Einbinden in Kubernetes}
+Ceph bietet mit \textit{ceph-helm} einen Helm-Chart, der das Erzeugen eines neuen Ceph Clusters auf den Nodes des Kubernetes-Clusters vereinfacht. Dabei wird über die Datei \textit{ceph-overrides.yaml} das Ceph Cluster konfiguriert. Anschließend wird ein Namespace für Ceph erstellt und die bereits existierenden Nodes, abhängig von ihrer Aufgabe, mit den Labeln \textit{ceph-mon=enabled}, \textit{ceph-mgr=enabled}, \textit{ceph-osd=enabled } und \textit{ceph-osd-<device>=enabled } versehen. \medskip
+
+Der Befehl in Listing \ref{lst:cephinstall} installiert schließlich basierend auf der vorherigen Konfiguration ein Ceph-Cluster.
+\lstset{language=bash}
+\begin{lstlisting}[frame=hlrtb, caption={Ceph: Installation} ,backgroundcolor=\color{white}, label={lst:cephinstall}]
+$ git clone https://github.com/ceph/ceph-helm
+$ helm install --name=ceph local/ceph --namespace=ceph  -f ceph-overrides.yaml
+\end{lstlisting}
+
+Das Listing \ref{lst:cephsc} zeigt beispielhaft eine StorageClass für CephFS. Hier wird über die Parameter der Zugriff auf das Ceph-Cluster konfiguriert.
+
+\lstset{language=yaml}
+\begin{lstlisting}[frame=hlrtb, caption={StorageClass CephFS} ,backgroundcolor=\color{white}, label={lst:cephsc}]
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: cephfs-sc
+provisioner: ceph.com/cephfs
+parameters:
+  monitors: 172.168.10.100:6789
+  adminId: admin
+  adminSecretName: ceph-secret-admin
+  adminSecretNamespace: "kube-system"
+  claimRoot: /volumes/kubernetes
+\end{lstlisting}
+
+\subsection{Portworx}
+Ähnlich wie die Lösungen zuvor wird bei Portworx der vorhandene Speicher mehrerer Nodes gebündelt und zur Verfügung gestellt. Die Lösung steht dabei in zwei verschiedenen Versionen zur Verfügung. Darunter die frei verfügbare px-dev Version und die kostenpflichtige px-enterprise Version, wobei Erstere in ihrem Funktionsumfang reduziert wurde. \medskip
+
+Portworx bietet die Möglichkeit, Funktionen wie Replikationen oder geplante regelmäßige Snapshots zu konfigurieren. Dadurch lässt sich die Persistenzlösung den Bedürfnissen anpassen und so zum Beispiel eine höhere Verfügbarkeit garantieren.
+Für die Verwaltung der in Portworx erstellten Volumes gibt es das Tool pxctl, welches über die \ac{CLI} sowohl die Volumes und deren Snapshots oder das Portworx Cluster managen kann. Auch ermöglicht es Zugriff auf Informationen des Speicherverbrauchs einzelner Nodes oder des gesamten Clusters.
+
+\subsubsection{Einbinden in Kubernetes}
+Neben den bereits aus den vorherigen Lösungen bekannten Helm Chart bietet Portworx zusätzlich die Möglichkeit, über die eigene Webseite die Konfiguration durchzuführen. Dieser Weg generiert einen Konsolen-Befehl, der für die Installation genutzt werden kann. Portworx benötigt bereits vor der Installation einen etcd Server, welcher während der Installation angegeben werden muss. Die Möglichkeit einen Built-In Server zu verwenden, befindet sich derzeit im Beta Status. \medskip
+
+Um Portworx mit Helm zu installieren, müssen die in Listing \ref{lst:portworxinstall} genannten Befehle ausgeführt werden.
+\lstset{language=bash}
+\begin{lstlisting}[frame=hlrtb, caption={Portworx: Installation} ,backgroundcolor=\color{white}, label={lst:portworxinstall}]
+$ git clone https://github.com/portworx/helm.git
+$ helm install --debug --name portworx --set etcdEndPoint=etcd:http://172.168.10.100:2379, clusterName=$(uuidgen) ./helm/charts/portworx/
+\end{lstlisting}
+
+Das Listing \ref{lst:portworxsc} zeigt beispielhaft eine StorageClass für Portworx. Hier lassen sich über die Parameter Einstellungen wie das Dateisystem, die Anzahl an Replikationen, eine Regelung für regelmäßige Snapshots oder auch ob ein mehrfacher Zugriff auf den Speicher möglich ist konfigurieren.
+
+\lstset{language=yaml}
+\begin{lstlisting}[frame=hlrtb, caption={StorageClass Portworx} ,backgroundcolor=\color{white}, label={lst:portworxsc}]
+kind: StorageClass
+apiVersion: storage.k8s.io/v1beta1
+metadata:
+    name: portworx-sc
+provisioner: kubernetes.io/portworx-volume
+parameters:
+  repl: "2"
+\end{lstlisting}
+% Wichtioge paramter
+% Snap Shedule
+% Shared
+
+\subsection{Quobyte}
+Quobyte ist eine Softwarelösung für ein verteiltes Speichersystem. Der Speicher mehrerer Server wird gebündelt und zusammen über verschiedene Protokolle wie NFS und S3 zur Verfügung gestellt. Auch ist es möglich, verschiedene Arten von Storage zu nutzen, wie einen Object-Storage, ein File-Storage oder auch Block-Storage zum Beispiel für Datenbanken. Das System bietet drei Services, welche zwar auf einem Node gleichzeitig laufen können, aber bei größeren Systemen oft getrennt werden. Die Registry Services, welche auf mindestens vier Nodes laufen und die für die Registrierung von Geräten genutzt werden. Die Metadata Services, welche alle Informationen außer die Daten selbst enthalten. Dazu zählen Attribute, Berechtigungen und Speicherort der Datei. Und die Data Services, welche für das Lesen und Schreiben der Daten zuständig sind. Davon existiert ein Service pro Node. \medskip
+
+Um auf eine Veränderung der Anforderungen an die Lösung zu reagieren, kann das System ohne Downtime horizontal über das Hinzufügen neuer Nodes skaliert werden. Durch eine Parallelisierung der Lese- und Schreibanfragen erhöht der neue Node so ebenfalls die Performance des Clusters. Über Richtlinien lassen sich das Dateilayout oder die Regeln für die Platzierung von Dateien festlegen und durch Namespace lassen sich Daten voneinander isolieren.
+% Self managing, regiaert auf hardwarefehler und disk corruptiobn
+% web consoel oder rest api /cli
+% Quotas
+% Live updates
+%mirroring als disaster recovery oder backup source
+
+\subsubsection{Einbinden in Kubernetes}
+Auch Quobyte stellt für die Verwendung in Kubernetes eine Anleitung sowie einige Dateien zur Unterstüzung zur Verfügung. Nach der Konfiguration über die Dateien kann ein Quobyte-Cluster mit wenigen Befehlen gestartet werden.
+
+\lstset{language=bash}
+\begin{lstlisting}[frame=hlrtb, caption={Quobyte: Installation} ,backgroundcolor=\color{white}, label={lst:quobyteinstall}]
+$ kubectl label node boostrap_node quobyte_registry="true"
+
+$ kubectl create -f quobyte-ns.yaml
+$ kubectl -n quobyte create -f config.yaml
+$ kubectl -n quobyte create -f quobyte-services.yaml
+
+$ kubectl -n quobyte create -f registry-ds.yaml
+$ kubectl -n quobyte create -f data-ds.yaml
+$ kubectl -n quobyte create -f metadata-ds.yaml
+
+$ kubectl create -f webconsole-deployment.yaml
+$ kubectl create -f qmgmt-pod.yaml
+
+$ kubectl port-forward webconsole-pod 8080:8080
+\end{lstlisting}
+Das Listing \ref{lst:quobyteinstall} zeigt die Befehle. Dort wird zuerst der Node, der zu Beginn als Registry genutzt werden soll, mit einem Label versehen, und der Quobyte Namespace in Kubernetes erzeugt. Danach wird die Konfiguration geladen und die Services erzeugt. Nachdem die Services gestartet sind, werden die Webconsole und die API gestartet. Der Geräteinspektor der Webconsole ermöglicht nach dem initialen Aufsetzen das Hinzufügen von neuen Nodes. Dafür müssen diese lediglich mit einem Label entsprechend ihrerer Funktion versehen werden. \medskip
+
+Das Listing \ref{lst:quobytesc} zeigt beispielhaft eine StorageClass für Quobyte. Über die Parameter werden Einstellungen, wie die URL der API und Registry, aber auch die Daten für den Zugriff auf das System konfiguriert. \medskip
+
+\lstset{language=yaml}
+\begin{lstlisting}[frame=hlrtb, caption={StorageClass Quobyte} ,backgroundcolor=\color{white}, label={lst:quobytesc}]
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: quobyte-sc
+provisioner: kubernetes.io/quobyte
+parameters:
+  quobyteAPIServer: "http:/172.168.10.100:7860"
+  registry: "172.168.10.100:7861"
+  adminSecretName: "quobyte-admin-secret"
+  adminSecretNamespace: "kube-system"
+  user: "root"
+  group: "root"
+  quobyteConfig: "BASE"
+  quobyteTenant: "DEFAULT"
+  createQuota: "False"
+\end{lstlisting}
+
+\section{Bewertung}
+In dem vorherigen Abschnitt wurden die Persistenzlösungen, welche die funktionalen Anforderungen erfüllen, näher betrachtet. Um eine Lösung zu finden, werden die Lösungen anhand der nicht-funktionalen Anforderungen verglichen und bewertet. Anschließend wird eine Handlungsempfehlung formuliert und in Kapitel \ref{cha:implementierung} diese für das bestehende System praktisch umgesetzt und abschließend ein Fazit erarbeitet.
+
+\subsection{NFS}
+Im Gegensatz zu den anderen hier evaluierten Lösungen handelt es sich bei \ac{NFS} um keine allumfassende Software, sondern lediglich um ein Protokoll, um Daten über das Netzwerk zur Verfügung zu stellen. Einige der anderen vorgestellten Lösungen können zusätzlich zu den eigenen Volume Plugins auch über \ac{NFS} eingebunden werden. Standardmäßig denkt der Nutzer bei \ac{NFS} an einen zentralen Server, der seinen Clients Daten zur Verfügung stellt. Allerdings lässt sich ein \ac{NFS} Server durch weiterführende Konfiguration oder zusätzliche Software um viele Funktionen erweitern. 
+Zusätzlich bietet er durch seinen Verbreitungsgrad die perfekte Grundlage für Weiterentwicklungen. Einige Forscher haben bereits das NFS Protokoll verbessert und erweitert. Ein paar Beispiele sind nfsp \cite{Lombard2002Nfsp:Workstations}, IncFS \cite{Yi2006IncFS:NFS} und FT-NFS \cite{Peyrouze1996FT-NFS:Workstations}.
+
+\subsubsection{Ausfallsicherheit}
+Um ein hochverfügbares \ac{NFS}-Cluster zu planen, wird neben mehreren \ac{NFS}-Servern zusätzliche Software benötigt. Die Software Pacemaker ist ein Open-Source Cluster-Manager für Linux, welche ein aus mehreren \ac{NFS}-Servern ein hochverfügbares \ac{NFS}-Cluster machen kann. Für die Kommunikation zwischen den einzelnen Servern kann zum Beispiel die Software Corosync, welche ebenfalls eine Open-Source Anwendung ist, eingesetzt werden. Zusätzlich ermöglicht die Verwendung von der Software Distributed Replicated Block Device (DRBD) das Spiegeln eines Servers auf einen zweiten in Echtzeit.
+Auch wenn im \ac{NFS}-Protokoll selbst die Funktionen, um die Anforderungen an die Ausfallsicherheit zu erfüllen, nicht standardmäßig integriert sind, lässt sich durch die Verwendung von freier Software diese Funktionalität ergänzen.
+
+\subsubsection{Datensicherung}
+Das Erstellen von Sicherungen ist bei einem \ac{NFS}-Server oder \ac{NFS}-Cluster möglich. Das Dateisystem oder Teile davon lassen sich durch gängige Tools, wie zum Beispiel rsync, synchronisieren. Dadurch lassen sich durch die Verwendung vorgefertigter oder selbst entworfener Skripte automatisierte Sicherungen anfertigen. Die Funktionen wie Snapshots oder auch inkrementelle Backups lassen sich durch das Verwenden geeigneter Software umsetzen. Wird ZFS als Dateisystem verwendet, ermöglicht es das Erstellen von Snapshots. Zusätzlich bietet ZFS die Möglichkeit, die Unterschiede zwischen Snapshots festzustellen, und diese nach der ersten Sicherung zu speichern.
+
+\subsubsection{Datenintegrität}
+Neben den Vorkehrungen, welche \ac{NFS} für eine Sicherstellung der Integrität der Daten trifft, bietet sowohl das Protokoll TCP und die Verwendung von Ethernet zwei Stellen, welche Checksummen benutzen. Seit \ac{NFS} v4 ist es möglich, durch die Verwendung von Kerberos im Modus krb5i jeder Transaktion, um die Integrität zu verbessern, einen Hash hinzuzufügen. Dieser Modus alleine bietet allerdings keine Ende-zu-Ende Integrität.
+
+\subsubsection{Skalierbarkeit}
+Auch wenn \ac{NFS} oft mit einem zentralen Server verbunden wird, lässt sich dieser sowohl in der Performance als auch der Speicherkapazität skalieren. Während die Skalierung des zur Verfügung stehenden Speichers über das Vergrößern der vorhandenen Festplatten oder das Installieren neuer Festplatten gelöst werden kann, muss für eine Skalierung der Performance ein wenig mehr Aufwand betrieben werden. Eine Möglichkeit ist, dass mit \ac{NFS} v4.1 veröffentlichte \textit{pnfs}, welches \ac{NFS} parallelisiert. Dabei ist ein zentraler Server nur noch für den Kontakt zwischen den Clients und den \ac{NFS}-Speichern zuständig.
+
+\subsubsection{Ressourcenbedarf}
+Der Ressourcenbedarf eines einfachen \ac{NFS} Servers ist in unseren Fall vernachlässigbar. Wird die Funktionalität durch die Konfiguration oder zusätzliche Software erweitert, so steigt der Bedarf an Ressourcen ebenfalls und muss im Einzelfall überprüft werden.
+
+\subsubsection{Benutzerfreundlichkeit}
+Da es sich bei \ac{NFS} um ein im Linux-Betriebssystem integriertes Protokoll handelt, ist das Einbinden für Nutzer ohne großen Aufwand möglich. Auch das Entwerfen oder die Nutzung von Skripten für die automatische Installation ist möglich. Wird \ac{NFS} durch Software für unsere Anforderungen erweitert, ist dies beim Entwurf der Skripte zu berücksichtigen.
+
+\subsubsection{Wartbarkeit}
+Von den evaluierten Speicherlösungen ist \ac{NFS} die Software, welche am längsten am Markt ist. Bereits 1985 wurde \ac{NFS} v2 veröffentlicht, wobei die erste Version nie öffentlich verfügbar war \cite{Pawlowski1994NFSImplementation}. In der Zeit seit Veröffentlichung hat sich die Software fest am Markt etabliert, wodurch eine große Anzahl an Erfahrungsberichten und eine ausführliche Dokumentation existiert. Inzwischen liegt \ac{NFS} in der Version 4 vor, welche die Software um neue Funktionen wie zum Beispiel pnfs erweitert.
+
+\subsubsection{Zusammenfassung}
+Mit \ac{NFS} lassen sich durch die hohe Erweiterbarkeit und den vorhandenen Erfahrungen viele Anwendungsfälle abdecken. Vor allem, wenn bereits ein \ac{NFS}-Server im Unternehmen zur Verfügung steht, bietet es sich an, diesen zu nutzen. Wird die Funktionalität durch mehrere externe Programme erweitert, steigt die Komplexität des Systems exponentiell. Durch eine hohe Komplexität wird unter anderem die Suche von Fehlern bei Ausfällen oder die Wartung aufwendig.
+%Kerberos Nutzerauthefikation
+%NFs exports für Server auth
+%Modizierungen noch nennen ink Papper
+% 
+
+\subsection{GlusterFS}
+GlusterFS ist eine Open-Source-Software, welche es ermöglicht ein Speichercluster bestehend aus mehreren Nodes aufzusetzen. Dabei wird der Speicher der Nodes als einheitliches Dateisystem präsentiert. Dabei können die in GlusterFS erstellten Volumes unter Linux per NFS und unter Windows über CIFS eingebunden werden.
+
+\subsubsection{Ausfallsicherheit}
+Der Speicher wird von GlusterFS über mehrere Nodes verteilt und abhängig von der Konfiguration als ein einzelner oder mehrere zusammenhängende Speicher zur Verfügung gestellt. Dadurch bietet das System durch den Verzicht zentralisierter Strukturen keinen \ac{SPoF}. Beim Erstellen dieses Laufwerks ist es möglich, den Modus auszuwählen, und die Daten über mehrere Server zu replizieren (siehe \ref{subsec:gluster}). Zusätzlich bietet die Software die Möglichkeit, die Nodes in Zonen einzuteilen. Werden Redundanzen erzeugt, werden diese soweit möglich über die Zonen verteilt. So lässt sich durch die Verwendung mehrerer Replikationen ein hochverfügbares Cluster entwerfen.
+
+\subsubsection{Datensicherung}
+Für eine Datensicherung bietet GlusterFS ähnlich wie NFS keinen integrierten Weg. Durch die Verwendung von Skripten oder der direkten Verwendung von einem Tool wie rsync ist es allerdings möglich, das Dateisystem vollständig zu sichern. Wird zusätzlich noch das in der Software integrierte Tool \textit{glusterfind} benutzt, kann eine Liste der Dateien, welche sich geändert haben, erstellt werden. Mithilfe dieser Liste kann nach dem ersten vollständigen Backup eine inkrementelle Sicherung erstellt werden.
+Die Erstellung von Snapshot ist ohne weiteren Aufwand möglich und bereits in GlusterFS integriert.
+
+\subsubsection{Datenintegrität}
+Die Software bietet neben der bereits in den Protokollen integrierten Fehlererkennung Möglichkeiten, Fehler zu erkennen und zu beheben. Werden Redundanzen verwendet, sorgt der Self Heal Daemon (shd) dafür, dass sobald ein Node nach einem Fehler erneut gestartet wird, der aktuelle Stand der Daten synchronisiert wird. Zusätzlich kann manuell auch ein Full Heal ausgeführt werden, welcher den kompletten Datenbestand kopiert. \medskip
+
+Eine weitere Möglichkeit ist die Bit Rot Detection, welche die Cheksumme jeder Datei und jedes Objektes abgleicht, um dadurch Fehler zu erkennen. Die Ergebnisse werden anschließend in einer Log-Datei gespeichert.
+% Um die Chance auf eine lässt sich zum Beispiel die Chance auf eine Split-Brain Situation, bei der zwei unterschiedliche Stände an Daten zur Verfügung stehen verhindern.
+% self heal daemon? Info befehl erkennt split brain
+
+
+\subsubsection{Skalierbarkeit}
+Um auf veränderte Anforderungen an die Persistenzlösung zu reagieren, ist es möglich, GlusterFS sowohl durch das Vergrößern oder das Hinzufügen von Festplatten als auch durch das Ergänzen um zusätzliche Nodes zu erweitern. Anschließend an das Hinzufügen muss über einen Befehl entweder ein bestehendes virtuelles Laufwerk erweitert oder ein neues erstellt werden.
+%gluster volume add-brick www replica 3 192.168.0.3:/srv/.bricks/www
+
+\subsubsection{Ressourcenbedarf}
+Um ein Speichercluster mit GlusterFS zu entwerfen, werden mindestens zwei Nodes benötigt. Neben dieser Anforderung wird empfohlen, bei Bare-Metal Servern zwei Gigabyte Arbeitsspeicher \cite{gluster:bm} und bei virtuellen Maschinen mindestens ein Gigabyte Arbeitsspeicher \cite{gluster:vm} zu installieren. Abhängig von der Last der Server und dem Einsatzzweck ist zu überprüfen, ob die minimalen Anforderungen ausreichend sind oder ob das System skaliert werden muss.
+
+\subsubsection{Benutzerfreundlichkeit}
+Gluster selbst bietet mit \textit{gluster-kubernetes} eine Möglichkeit, GlusterFS einfach in einem bestehenden Kubernetes Cluster bereitzustellen. Dabei besteht die Möglichkeit, entweder GlusterFS innerhalb des Kubernetes Clusters aufzusetzen oder ein externes existierendes GlusterFS einzubinden. Entscheidet der Nutzer sich, GlusterFS extern auf virtuellen Maschinen oder Bare-Metal Server aufzusetzen, stehen auch hierfür Skripte zum Beispiel für Ansible zur Verfügung.
+
+\subsubsection{Wartbarkeit}
+Gluster wurde 2005 als Open-Source Projekt gestartet \cite{XiaoD.ZhangC.Li2015TheStorage}, ist daher schon einige Zeit am Markt und hat sich inzwischen etabliert. Der Updatezyklus von GlusterFS sieht ein Major Release alle vier Monate, sowie jeden Monat Updates für die bereits veröffentlichten Major Releases vor \cite{gluster:release}. Durch die Dokumentation und die zahlreichen Erfahrungsberichte wird die Wartung vereinfacht.
+
+\subsubsection{Zusammenfassung}
+Im Vergleich mit \ac{NFS} bietet GlusterFS ohne die Verwendung von externer Software bereits viele Funktionen, lediglich für das Erstellen von Sicherungen muss auf Skripte oder die manuelle Verwendung externer Tools ausgewichen werden. Ein weiterer Nachteil ist, dass in der Software kein WebUI für die einfache Verwaltung der Software vorhanden ist. Dadurch ist es nötig das System entweder durch Skripte oder das manuelle Ausführen von Befehlen zu verwalten oder auf eine externe Lösung wie oVirt\footnote{Eine Open-Source Lösung für Virtualisierung} zu setzen. \medskip
+
+Durch die verteilte Architektur und das Verwenden von Redundanzen besitzt die Speicherlösung keinen \ac{SPoF}. Zudem bietet der Verzicht auf Server für Metadaten eine vereinfachte Struktur und erleichtert die Planung.
+Zusätzlich bietet die Open-Source-Software einen transparenten Updatezyklus und eine aktive Entwicklung.
+
+\subsection{CephFS}
+Ähnlich wie GlusterFS ist auch Ceph eine Open-Source-Software für das Bereitstellen von Speicher. Dabei ist die Software unabhängig von der Art der Hardware und kann auf nahezu jedem System genutzt werden \cite{cephcookbook}. Ceph wird standardmäßig vom Linux-Kernel unterstützt und kann so ohne weitere Software über den mount Befehl eingebunden werden.
+% integirert in smb und cifs.  Durch die verwendung eines nfs servers auch über nfs teilbar
+
+\subsubsection{Ausfallsicherheit}
+Auch Ceph bietet durch seine verteilte Struktur eine hohe Ausfallsicherheit. So ist es durch Redundanzen möglich, auf Ausfälle von einzelnen Nodes ohne einen Ausfall des Systems zu reagieren. Um ein hochverfügbares System aufzubauen, wird empfohlen, eine ungerade Anzahl an MONs zu verwenden \cite{cephcookbook}. Durch die ungerade Anzahl ist es möglich, dass die MONs im Quorum eine Mehrheit bilden können. Wie auch bei GlusterFS bietet sich durch die redundanten Systeme kein \ac{SPoF}.
+%Paxos
+
+\subsubsection{Datensicherung}
+Um ein CephFS Speicher zu erstellen, werden zwei sogenannte RADOS Pools benötigt, einen für die Metadaten und einen für die Daten. Während des Erstellens eines Pools lässt sich unter anderem die Anzahl an Redundanzen einstellen. Zudem ist es möglich, Snapshots dieser Pools zu erstellen. Snapshots vom CephFS direkt zu erstellen ist bisher nur in einer Version möglich, die sich aktuell noch in Entwicklung befindet.
+Ähnlich wie GlusterFS und \ac{NFS} gibt es für CephFS keinen integrierten Weg um Sicherungen zu erstellen, allerdings ist es auch hier möglich manuell oder durch Skripte eine automatisierte Sicherung auf Dateisystemebene zu konfigurieren. Durch Überprüfen der Attribute der Verzeichnisse kann festgestellt werden, ob sich Daten in dem Verzeichnis geändert haben und so eine Liste der Veränderungen für ein inkrementelles Backup erstellt werden.
+%Snapshots möglich wenn man im .snap ordner ein verzeichnis erstellt aber nur dev Version
+%Für rbd gibt es tools für backups -&gt; auch inkrementell
+%ec ?
+
+\subsubsection{Datenintegrität}
+Auch Ceph integriert bereits in der Software einige Funktionen für die Erkennung von Fehlern. So wird die Datenintegrität durch sogenannte Scrubbing Placement Groups sichergestellt. Dabei erzeugt Ceph für jede Gruppe eine Liste von allen Objekten und vergleicht die primären Objekte mit ihren Redundanzen. Dadurch lassen sich fehlende oder fehlerhafte Objekte aufspüren. Ceph bietet zwei Arten von Scrubbing. Täglich wird einmal Light Scrubbing ausgeführt, welche lediglich die Attribute und Größe der Objekte überprüft und einmal wöchentlich mit Deep Scrubbing werden alle Daten anhand von Checksummen verglichen.
+
+\subsubsection{Skalierbarkeit}
+Verändern sich die Anforderungen an die Persistenzlösung, kann Ceph um zusätzlichen Speicher oder auch Nodes erweitert werden. So lassen sich alle Bestandteile des Clusters, also sowohl die OSDs, MDSs, als auch die MONs skalieren. Dadurch lässt sich das System linear skalieren und dem realen Bedarf anpassen. Das Hinzufügen neuer Nodes erhöht dabei nicht nur die Kapazität, sondern kann auch die Performance erhöhen.
+%Einfach erweiterbar über ceph-ansible
+
+\subsubsection{Ressourcenbedarf}
+Für die Installation von Ceph wird lediglich eine gängige Linux Distribution benötigt. Auch wenn Ceph keine minimale Anzahl an Nodes benötigt und alle Daemons somit auf einem einzigen laufen könnten, wird empfohlen die Daemons auf unterschiedlichen Nodes zu verteilen. Um ein hochverfügbares Cluster aufzubauen, werden zudem mindestens zwei Nodes benötigt.
+Zusätzlich wird empfohlen mindestens ein Gigabyte Arbeitsspeicher für jeden Daemon, der auf dem Node läuft, bereitzustellen. Handelt es sich dabei um OSDs wird empfohlen, ein Gigabyte Arbeitsspeicher je Terabyte Speicher zu verwenden.
+
+\subsubsection{Benutzerfreundlichkeit}
+Ähnlich wie zuvor GlusterFS bietet Ceph mit ceph-helm eine Möglichkeit, ein neues Ceph Cluster innerhalb eines bestehenden Kubernetes Clusters aufzusetzen. Dieser Helm Chart befindet sich zurzeit allerdings noch in Entwicklung. Um ein Ceph auf virtuellen Maschinen oder Servern außerhalb eines Kubernetes Clusters aufzusetzen, steht mit ceph-ansible eine Sammlung an Skripten bereit, um das Cluster aufzusetzen, zu erweitern und zu warten.
+
+\subsubsection{Wartbarkeit}
+Die erste \ac{LTS} Version der Open-Source-Software Ceph wurde am 03. Juli 2012 veröffentlicht \cite{ cephcookbook}. Seitdem hat die Software sich stetig weiterentwickelt und etablierte sich am Markt. Zudem bietet Ceph eine aktive Community \cite{Du2018Cider:Storage} und besitzt einen transparenten Zeitplan für Veröffentlichungen. Der erste \ac{LTS} Release der aktuellen Version 12.2 wurde bereits 2017 veröffentlicht.
+Neben einer Dokumentation bietet Ceph aufgrund der aktiven Community viele Erfahrungsberichte, was bei der Suche nach Fehlern und der Planung eines stabilen Systems hilfreich ist.
+
+
+\subsubsection{Zusammenfassung}
+Ceph ist eine Software, welche sich aufgrund ihres Funktionsumfangs für nahezu jeden Einsatzzweck eignet. Durch ihren hochverfügbaren Aufbau und verteilten Aufbau bietet die Speicherlösung eine gute Skalierbarkeit. Allerdings befinden sich einige Funktionen wie ceph-helm oder speziell bei CephFS Snapshots noch in Entwicklung. Anders als GlusterFS bietet Ceph durch das Dashboard Plugin ein WebUI.
+
+\subsection{Portworx}
+Bei dem 2014 veröffentlichten \cite{portworx:date} handelt es sich eine Speicherlösung, welche sowohl von der Infrastruktur als auch von der Container Orchestration Lösung unabhängig ist. Neben Kubernetes kann sie zum Beispiel auch direkt mit Docker oder mit Mesophere\footnote{Plattform für das Ausführen von Containern} verwendet werden. Dabei bietet die Software zwei unterschiedliche Versionen. Eine kostenlose Version, genannt px-dev, welche in ihrem Funktionsumfang reduziert ist und eine kostenpflichtige Version, genannt px-enterprise, welche neben dem vollen Funktionsumfang auch Unterstützung für größere Systeme bietet.
+%px-dev eignet sich nicht
+
+\subsubsection{Ausfallsicherheit}
+Die Software Portworx bietet die Möglichkeit, durch eine verteilte Struktur und Redundanzen ein hochverfügbares Cluster aufzubauen. Redundanzen werden beim Erstellen von virtuellen Datenträgern über eine Replication Factor genannte Einstellung konfiguriert. Durch einen hochverfügbares Speicherclusters lässt sich mit Portworx auf Fehler von Hardware oder von den Nodes selbst ohne Downtime reagieren.
+%. Bei Portworx handelt es sich, im Gegensatz zu den vorherigen Lösungen, um eine Lösung, welche für die persistente Datenspeicherung im Containerumfeld entwickelt wurde.
+
+\subsubsection{Datensicherung}
+Während beide Versionen das Erstellen von Snapshots ermöglichen, wird die Cloud Snap genannte Funktion, um Backups von Volumen auf einen zweiten S3 Kompatiblen System abzulegen, nur von der kostenpflichtigen px-enterprise Version unterstützt. Dabei ist das erste Backup ein vollständiges Backup und danach die nächsten sechs inkrementell. Das folgende Siebte ist wieder ein vollständiges Backup. Eine Wiederherstellung dieser Sicherungen ist ohne Aufwand direkt durch den \textit{cloudsnap} Befehl möglich. Zusätzlich ist es möglich, Snapshots zu planen und regelmäßig automatisch zu erstellen.
+
+\subsubsection{Datenintegrität}
+Wird Portworx auf Bare-Metal Servern installiert kann es die Laufwerke auf Fehler überprüfen und bei gefunden Fehlern den Anwender benachrichtigen oder diese reparieren. Neben den in den Protokollen integrierten Mechanismen, um die Integrität sicherzustellen, kann durch Verwendung von einem Dateisystem, welches eine Überprüfung der Datenintegrität bereits enthält, die Erkennung von Fehlern sowie auch die Korrektur dieser verbessert werden.
+
+\subsubsection{Skalierbarkeit}
+Ändern sich die Anforderungen an die persistente Speicherung kann Portworx ähnlich wie Gluster oder Ceph ohne großen Aufwand skaliert werden. Durch das Hinzufügen neuer Festplatten lässt sich die Gesamtspeicherkapazität erweitern und durch das Hinzufügen neuer Nodes die Performance steigern. Features wie eine für Container optimierte elastische Skalierung von Volumes ermöglichen eine zusätzliche Art Skalierung.
+%px dev beschrenkt anzhak nodes und speicher
+
+\subsubsection{Ressourcenbedarf}
+Um ein Portworx Cluster zu erstellen, werden neben einer gängigen Linux Distribution mindestens drei Nodes benötigt. Empfohlen werden für jeden dieser Nodes mindestens vier Prozessorkerne und mindestens vier Gigabyte Arbeitsspeicher. Zusätzlich zu den Anforderungen für die Portworx Nodes wird noch eine Key-Value Datenbank benötigt. Für eine produktive Umgebung empfiehlt Portworx ein etcd Cluster mit mindestens drei Nodes. Dabei sollte jeder dieser Node acht Gigabyte Arbeitsspeicher und mindestens 100 Gigabyte Festplattenspeicher haben. Ab Version 2.0 kann automatisch ein Key-Value Datenbank bei der Installation von Portworx erzeugt werden. Die kostenlose Version px-dev ist auf ein Maximum von einem Terabyte Speicher und drei Nodes beschränkt.
+%https://docs.portworx.com/reference/knowledge-base/etcd/
+
+\subsubsection{Benutzerfreundlichkeit}
+Neben einem Helm Chart steht für die Installation über die Webseite von Portworx mit dem Kubernetes Spec Generator ein Tool bereit, um Portworx zu konfigurieren und ein Skript für die Installation in einem Kubernetes Cluster zu erstellen. Dadurch lässt sich Portworx einfach und ohne zusätzlichen Aufwand installieren.
+Im Gegensatz zu den vorherigen Lösungen wird Portworx typischerweise durch den Container Orchestrator bereitgestellt.
+Für die Verwaltung des Speicherclusters und der erzeugten Datenträger steht mit Lighthouse eine WebUI zur Verfügung.
+
+\subsubsection{Wartbarkeit}
+Portworx bietet eine Speicherlösung, welche im Vergleich mit den anderen Lösungen die kürzeste Zeit am Markt ist. Dennoch bietet sie eine Dokumentation und aktive Community. Allerdings bietet die Software daher auch weniger Erfahrungsberichte. Zusätzlich fehlt eine transparente Darstellung des Zeitplans für Veröffentlichungen.
+
+\subsubsection{Zusammenfassung}
+Im Gegensatz zu den vorherigen Lösungen bietet Portworx, welches für die persistente Datenspeicherung von Container entwickelt wurde, bereits von Anfang an eine gute Integration in Container Infrastruktur. Weitere Funktionen wie das elastische Skalieren von erstellten Datenträgern oder das Verschlüsseln der Datenträger mit selbst bereitgestellten Schlüsseln machen diese Persistenzlösung zu einer umfangreichen Software für die Datenspeicherung.
+Allerdings benötigt Portworx im Vergleich mit den anderen Lösungen eine große Menge an Ressourcen und aufgrund der kürzeren Zeit am Markt existieren für diese Software weniger Erfahrungsberichte.
+
+\subsection{Quobyte}
+Die letzte evaluierte Persistenzlösung Quobyte ist ebenfalls eine reine Software Lösung, welche den Speicher mehrerer Nodes gebündelt zur Verfügung stellt. Dabei versucht Quobyte mit einem wartungsarmen für Datencenter geeignetem System, viele Anwendungsfälle abzudecken. Die Software bietet Schnittstellen für Protokolle wie NFS, S3 und SMB. Dadurch ermöglicht sie das Zusammenfassen verschiedener Speicheranwendungen in einem System.
+
+\subsubsection{Ausfallsicherheit}
+Quobyte bietet wie auch GlusterFS, CephFS und Portworx ein integriertes, automatisches Erstellen von Redundanzen. Dadurch kann ein hochverfügbares System konzipiert werden, bei dem sowohl Metadaten als auch die eigentlichen Daten redundant sind. Durch manuell festlegbare Richtlinien lässt sich die Platzierung der Daten zusätzlich beeinflussen und so sicherstellen, dass sie auf unterschiedlichen Systemen oder an unterschiedlichen Orten gespeichert werden. Diese Architektur ermöglicht es, einen \ac{SPoF} zu vermeiden \cite{quobyte:whitepaper}. Bei einem Fehler wie Festplattenversagen oder der Verschiebung der Daten ändert die Software automatisch das Routing der Dateien, sodass sie ohne Downtime weiter verwendet werden können. Funktionen wie Rolling Updates ermöglichen es, während des Betriebs ohne Downtime defekte Hardware auszutauschen oder Updates auszuführen.
+% wird bei Festplattenversagen oder bei der Verschiebung von Daten das Routing auf eine Redundanz geändert, so dass die Daten weiter verwendet werden können.
+%https://www.quobyte.com/blog/2018/05/10/checksums-in-storage-systems-and-why-you-should-care/
+% no single point of failure anywhere \cite{quobyte:whitepaper}
+%policys -&gt; bis aud dateiebene -&gt; data placement ZB nach endung
+
+\subsubsection{Datensicherung}
+Das Erstellen von Datensicherungen ist unabhängig von der Art des verwendeten Speichers durch gängige Tools für Sicherungen von Dateisystemen wie rsync oder fsync möglich. Auch wenn es sich um Block- oder Object-Storage handelt ist es möglich, diese als Dateisystem einzubinden. Eine weitere Option ist das asynchrone Synchronisieren der Daten auf ein anders Cluster. Externe Tools wie die Open-Source Anwendung Duplicati\footnote{https://www.duplicati.com/} machen ein verschlüsseltes Backup über den S3-Service von Quobyte möglich. Für das Erstellen und Verwalten von Snapshots steht eine in Quobyte integrierte Funktion bereit. Erstellte Snapshots werden innerhalb eines \textit{.snapshots} genannten Verzeichnisses gespeichert.
+
+\subsubsection{Datenintegrität}
+Für einen wartungsarmen und fehlerfreien Betrieb verwendet die Software, um die Datenintegrität zu gewährleisten, Checksummen, welche auf den Client generiert und mit jedem Datenblock gespeichert werden \cite{quobyte:whitepaper}. Zusätzlich führt der Health Manager in regelmäßigen Abständen automatisch Data Scrubbing, also die Prüfung von Dateien auf dem Laufwerk auf Fehler und die Korrektur dieser durch die Redundanzen durch. Um den produktiven Betrieb dabei nicht zu stören, ist es möglich, Zeitfenster für diese Wartungen einzustellen. 
+Besteht Zweifel an der Konsistenz der Daten, wie zum Beispiel während eines Split Brain Zustandes, bei dem zwei unterschiedliche Stände an Daten zur Verfügung stehen, werden diese nicht ausgeliefert bis dieser Zustand geklärt ist \cite{quobyte:whitepaper}.
+%automated data scrubbing, rebalancing und enforcing policies -> health manager
+
+\subsubsection{Skalierbarkeit}
+Auch diese verteilte Speicherlösung bietet eine gute Skalierbarkeit. Die Gesamtkapazität lässt sich durch das Hinzufügen neuer oder Vergrößern bestehender Festplatten skalieren. Das Hinzufügen neuer Nodes dagegen kann neben der Kapazität auch die Performance steigern.
+
+\subsubsection{Ressourcenbedarf}
+Wie auch die Speicherlösungen zuvor benötigt Quobyte für die Installation ein System mit einer unterstützen Linux Distribution \cite{quobyte:whitepaper}. Allerdings benötigt die Software als minimale Systemanforderungen mehr Ressourcen als die vorherigen Persistenzlösungen. Es werden mindestens vier Server benötigt, welche jeweils mit mindestens vier Prozessorkerne und 16 Gigabyte Arbeitsspeicher ausgestattet sind. Zusätzlich werden mindestens zwei leere Datenträger mit einer Kapazität von mindestens 50 Gigabyte benötigt.
+%nahezu jede gängige linux distribution \cite{quobyte:whitepaper}
+
+\subsubsection{Benutzerfreundlichkeit}
+Im Gegensatz zu den vorherigen Lösungen existiert für Quobyte kein Helm Chart für die Installation in einem bestehenden Kubernetes Cluster. Für die Installation auf Servern oder virtuellen Maschinen wird ein Installer ausgeliefert, der durch die Installation begleitet und eine einfache Installation in weniger als einer Stunde ermöglichen soll \cite{quobyte:whitepaper}. Nach der erfolgreichen Installation durch den Installer ist es möglich, über das WebUI die existierenden Datenträger zu formatieren. Dabei kann ausgewählt werden, ob der Datenträger Metadaten oder Daten enthält. Quobyte empfiehlt, auf jedem Server mindestens ein Laufwerk für Metadaten zu verwenden. Anschließend ist die Software für die Verwendung bereit, und es können sowohl manuell über das WebUI als auch über die dynamische Erstellung von Kubernetes Volumes erzeugt werden. Das WebUI kann neben der \ac{CLI} auch für die Wartung und die Konfiguration der Software verwendet werden.
+%simple install, up and running in less than a hour \cite{quobyte:whitepaper}
+
+\subsubsection{Wartbarkeit}
+Die Software Quobyte, welche von der gleichnamigen in 2013 gegründeten \cite{quobyte:about} Firma vertrieben wird, ist die einzige der evaluierten Persistenzlösungen, die keine frei verfügbare Version anbietet. Das Unternehmen entstand aus Entwicklern des objektbasierten verteilten Dateisystems XtremeFS\footnote{http://www.xtreemfs.org/}. Aufgrund des Fehlens einer frei verfügbaren Version, dem Verzicht auf eine Open-Source Veröffentlichung und der ähnlich wie Portworx kurzen Zeit am Markt existieren wenig Erfahrungsberichte. Durch den Erwerb der Software erhält der Nutzer Zugriff auf die Dokumentation und Support durch das Unternehmen.
+%founded in 2013 \cite{quobyte:about}
+%automated monitoring
+
+\subsubsection{Zusammenfassung}
+Die Anwendung bietet wie die anderen Speicherlösungen eine umfangreiche Lösung, welche vor allem bei großen Systemen oder Datencentern seine Vorteile ausspielen kann. Durch die Möglichkeit, mehrere Anwendungen in eine einzelne wartungsarme Software zusammenzulegen, kann aus einem bestehenden System viel Komplexität genommen werden und somit der Betrieb erleichtert werden. Dabei ist es möglich, die erstellten virtuellen Datenträger durch unterschiedliche Namespaces voneinander zu trennen. Für eine einfache Wartung stehen neben automatischer Fehlerkennung und Korrektur auch Echtzeit- und Langzeitstatistiken bereit.
+%real time analytics - Latennz iops durchsatz - Langzeit statistic
+
+\subsection{Zusammenfassung der Ergebnisse}
+Durch den Vergleich der fünf Persistenzlösungen zeigen sich die Vor- und Nachteile dieser. Die Tabelle \ref{tbl:evaluationsübersicht} zeigt dabei eine Übersicht der Anwendungen und die einzelnen technischen Anforderungen (siehe Tabelle \ref{listeanforderungen}). Ein \textit{+} wurde vergeben, wenn die Anforderung in der Software integriert ist und ohne die Verwendung von externen Tools erfüllt wurde. Ein \textit{o} erhielt eine Speicherlösung, wenn die Anforderung nur durch die Verwendung externer Tools erfüllt wurden konnte und ein \textit{-} , wenn die Anforderung sich weder durch die Software selbst, noch durch externe Anwendungen erfüllen ließ. \medskip
+
+
+Durch ein näheres Betrachten der Tabelle lässt sich feststellen, dass ein großer Teil der Persistenzlösungen viele Funktionen bereits in der Software integriert. Eine Ausnahme bildet das Protokoll NFS, welches nur wenige Features direkt integriert und daher auf die Verwendung externer Tools angewiesen ist. Die größten Unterschiede zeigen sich im Ressourcenbedarf sowie der Zeit der Anwendungen am Markt. Basierend auf den Anforderungen ist GlusterFS, welches bis auf die Datensicherung jede Anforderung ohne das Verwenden externer Software erfüllt, die geeignetste Lösung.
+
+\begin{table}[ht!]
+\centering
+\resizebox{\linewidth}{!}{%}
+\begin{tabular}{clccccc} \hline
+\textbf{ID} & \textbf{Feature} & \textbf{NFS} & \textbf{GlusterFS} & \textbf{CephFS} & \textbf{Portworx} & \textbf{Quobyte}\\ \hline\hline
+03 & Ausfallsicherheit &  &  &  &  &  \\\hline
+& \multicolumn{1}{r}{Redundanzen} & o & + & + & + & + \\
+& \multicolumn{1}{r}{Hochverfügbarkeit} & o & + & + & + & + \\\hline
+04 & Datensicherung &  &  &  &  &  \\\hline
+& \multicolumn{1}{r}{Automatische Sicherung} & o & o & o & + & o \\
+& \multicolumn{1}{r}{Wiederherstellung} & o & o & o & + & o \\
+& \multicolumn{1}{r}{Snapshots} & o & + & + & + & + \\\hline
+05 & Datenintegrität &  &  &  &  &  \\\hline
+& \multicolumn{1}{r}{Fehlererkennung} & o & + & + & + & + \\
+& \multicolumn{1}{r}{Fehlerkorrektur} & o & + & + & + & + \\\hline
+06 & Skalierbarkeit &  &  &  &  & \\\hline
+& \multicolumn{1}{r}{Vertikal} & o & + & + & + & + \\
+& \multicolumn{1}{r}{Horizontal} & o & + & + & + & + \\\hline
+07 & Ressourcenbedarf &  &  &  &  &  \\\hline
+& \multicolumn{1}{r}{Erfüllt Anforderung} & + & + & - & - & - \\\hline
+08 & Benutzerfreundlichkeit &  &  &  &  &  \\\hline
+& \multicolumn{1}{r}{Automatische Installation} & o & + & + & + & + \\
+& \multicolumn{1}{r}{Automatische Wartung} & o & + & + & + & +\\\hline
+09 & Wartbarkeit&  &  &  &  &  \\\hline
+& \multicolumn{1}{r}{Stabile Version} & + & + & + & + & + \\
+& \multicolumn{1}{r}{Etablierte Software} & + & + & + & o & o \\
+& \multicolumn{1}{r}{Dokumentation} & + & + & + & + & + \\
+& \multicolumn{1}{r}{Open-Source} & + & + & + & o & - \\
+\end{tabular}}
+\caption{Zusammenfassung: Bewertung der Persistenzlösungen}
+\label{tbl:evaluationsübersicht}
+\end{table}
+% evtl 1-3 Punkte verteilen pro Punkt * Gewichtung um so auf unterschiedlcihe anzahl Features einzugenen?
+% in der Beschreibung Bewertungskriterien erklären und welche features punkte geben
+\section{Handlungsempfehlung}
+Basierend auf der Evaluation der Speicherlösungen zeigt sich, dass die im Kapitel \ref{cha:anfoderungen} für das Projekt erarbeiteten Anforderungen durch die Verwendung von GlusterFS nahezu ohne das Verwenden zusätzlicher Software abgedeckt werden können. \medskip
+
+Durch den Wechsel von einem zentralen \ac{NFS} Server auf eine verteilte Persistenzlösung wird ein möglicher \ac{SPoF} beseitigt. Die Open-Source-Software bietet durch ihre Zeit am Markt und einem transparenten Veröffentlichungszyklus gute Voraussetzungen für eine langfriste Nutzung. Durch den geringen Ressourcenbedarf ist es möglich, ohne den Kauf zusätzlicher Hardware ein System aufzusetzen, welches durch die Skalierbarkeit bei sich veränderten Anforderungen während der Weiterentwicklung des Projekts einfach erweitert werden kann. \medskip
+
+Lediglich für das Erstellen von Datensicherungen ist bei GlusterFS ein zusätzliches Konzept nötig. Allerdings bieten gängige Tools wie zum Beispiel rsync die nötige Funktionalität, um ein Backup auszuführen. Für ein automatisiertes Erstellen von Sicherungen empfiehlt es sich, ein Script für diesen Zweck zu entwerfen.
+
+%Aufbauend auf der Evaluation zeigt sich, dass die in Kapitel \ref{cha:anfoderungen} erarbeiteten Anforderungen, von den Persistenzlösungen erfüllt werden können. Während Funktionen wie die Datensicherheit von jeder der fünf Lösungen erfüllbar sind, unterscheidet sie sich jedoch im Ressourcenbedarf und Wartungsaufwand. Dabei bietet NFS und darauf folgend GlusterFS die Software mit dem niedrigsten Bedarf an Ressourcen. Wird NFS allerdings mit allen gewünschten Funktionen umgesetzt, ist zusätzliche Software nötig. Dies hat zur Folge, dass die Komplexität steigt und die Wartung aufwendig wird. GlusterFS dagegen bietet viele der Funktionen bereits ohne zusätzliche Software und ist daher der Lösung NFS vorzuziehen. Durch die Verwendung von GlusterFS werden alle Anforderungen mit vertretbaren Ressourcenbedarf erfüllt.
+
+%Decission Analysis:
+%-          Problem definieren (allgemeines Verständnis schaffen)
+%-          Anforderungskatalog aufstellen
+%o   Performance
+%o   Support 
+%o   Ressourcen
+%-          Aufteilung  in MUST und WANT -> Was MUST nicht erfüllt fällt raus
+%-          Weighted WANT -> Gewichtung der WANT Kriterien (oft mit Punkten von 1 – 10)
+%-          Evaluation -> Welche Alternative erfüllt die Anforderungen am besten?
+%-          [Risk analysis -> Was passiert wenn wir die falsche Entscheidung getroffen haben?]
+%-          Entscheidung treffen 
+%Für die Arbeit:
+%-          Anfangen mit der Frage, warum ich die zu betrachtenden Technologien ausgewählt habe 
+
+% Evaluationmatrix
+% vor und nachteile?
+% qualentative einschätzung 
+% evtl special features
+
+% Warbarkeit & Dings hinzufügen
+% Semigut bewerten, vorhandensein einerdoku, open source

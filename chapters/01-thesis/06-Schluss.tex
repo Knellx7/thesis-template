@@ -1,0 +1,30 @@
+\chapter{Zusammenfassung und Ausblick}
+\label{cha:schluss}
+Dieses Kapitel bildet den Abschluss dieser Thesis und dient dazu, die Ergebnisse zusammenzufassen und einen Ausblick auf zukünftige Themen zu bieten.
+
+\section{Zusammenfassung} % (fold)
+\label{sec:zusammenfassung}
+Diese Bachelorarbeit beschäftigte sich mit dem Finden einer geeigneten Kubernetes Persistenzlösung für das aktuelle Projekt, die prototypische Umsetzung der ALM v2. Dabei wurde zuerst die Idee des Projektes betrachtet und mögliche Anwendungsfälle der Software analysiert und basierend darauf Anforderungen erstellt, welche für die Evaluation der Speicherlösungen verwendet wurden. \medskip
+
+Anschließend wurden die in der Kubernetes Dokumentation genannten Volume Plugins mit den funktionalen Anforderungen, wie den Zugriffsmodi oder die On-Premises Kompatibilität, abgeglichen, um die zu evaluierenden Speicherlösungen einzugrenzen. Dabei zeigte sich, dass fünf Lösungen diese Anforderungen erfüllen und für die weitere Analyse und Bewertung infrage kommen. \medskip
+
+Anforderungen wie die Datensicherheit erfüllten nahezu alle Persistenzlösungen. Die größten Unterschiede zeigten sich im Ressourcenbedarf. Während NFS die wenigsten Ressourcen benötigt, muss um alle Anforderungen zu erfüllen auf verschiedene zusätzliche Software zurückgegriffen werden, was sowohl die Komplexität erhöht als auch die Wartbarkeit verschlechtert. Daher fiel die Entscheidung auf GlusterFS, welche bis auf die Datensicherung alle Anforderungen ohne zusätzliche Software erfüllt und auf virtuellen Maschinen mit einer moderaten Ausstattung lauffähig ist. Als Abschluss der Evaluation wurde eine Handlungsempfehlung formuliert. \medskip
+
+Nach der Auswahl der geeignetsten Software wurde das bestehende System analysiert und ein Konzept für die Umsetzung der Handlungsempfehlung erarbeitet. Um die vorher existierende Lösung zu ersetzen, wurde ein eigenständiges GlusterFS Cluster erstellt, welches eigenständig lauffähig ist und nicht im Kubernetes Cluster läuft. Für diese Installation, sowie die Integration in das existierende Cluster stehen Skripte zur Verfügung, welche eine fast vollständig automatisierte Einrichtung ermöglichen. Für die Datensicherung wurde das neue System, wie auch zuvor das alte, in eine Backup-Routine integriert. \medskip
+
+\section{Ausblick} % (fold)
+\label{sec:ausblick}
+In dieser Bachelorarbeit wurde ein geeignetes Konzept für die Speicherung von Daten für die prototypische ALM v2.0 entworfen. Da das Projekt im ständigen Wandel ist, ist es nötig, diese Entscheidung bei wechselnden Anforderungen erneut zu hinterfragen. \medskip
+
+Zusätzlich ist die Entwicklung der in Kubernetes verfügbaren Persistenzlösungen zu verfolgen. Durch die CSI und Flexvolume Schnittstelle ist für Dritte möglich, neue Volume Plugins zu entwickeln, welche für die Anforderungen gut geeignet sind. Neue Lösungen wie \textit{Rook}\footnote{\label{foot:rook}https://github.com/rook/rook}, welches sich zurzeit in der Entwicklung befindet und in noch keiner stabilen Version vorliegt, vereinen mehrere Anwendungen wie zum Beispiel Ceph, NFS und den verteilten Object Speicher Minio in einer Lösung. Sie bieten daher die Möglichkeit, für unterschiedliche Einsatzzwecke universal genutzt zu werden. \medskip
+
+Als letzter Punkt sind die möglichen Einsatzzwecke, um welche das GlusterFS System erweitert werden kann, zu betrachten. So können die derzeit noch im Unternehmen verwendenden NFS Servern in der Speicherlösung integriert werden oder ein Standortübergreifendes Speichersystem aufgebaut werden.
+% Cloudtechnologien
+% Messungen mehr
+% Backups auf Glusterfs sinnvoll?
+% evtl für it? falls es sich bewährt
+%Configsmap?
+
+%kubectl erklären
+%RWX für cluster atlassian
+%Erklären, dass ROok noch in etnwicklung ist.

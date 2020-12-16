@@ -1,0 +1,40 @@
+\chapter{Einleitung}
+\label{cha:einleitung}
+Viele Unternehmen haben in den letzten Jahren Erfahrungen mit dem 2013 veröffentlichten Docker \cite{doc:release} gesammelt. Mithilfe der Container Technologie können Entwickler Software vorkonfigurieren und Images der funktionalen Anwendungen, inklusive aller Abhängigkeiten, erzeugen. Dabei bieten containerisierte Anwendungen ähnliche Vorteile wie virtuelle Maschinen. So sind Anwendungen in Containern sowohl voneinander isoliert als auch plattformunabhängig. Allerdings bieten Container durch ihre Beschaffenheit auch weitere Vorteile wie das Schonen von Ressourcen oder das Beschleunigen der vorher zeitintensiven manuellen Konfiguration von System und Software. \medskip
+
+
+Mit zunehmender Komplexität der Anwendungen wird zum weiteren Ausbau der Container Infrastruktur, wie eine aktuelle Studie der \ac{CNCF} zeigt \cite{kube:survey}, weitgehend Kubernetes als Lösung für die Orchestration von Containern eingesetzt. Kubernetes automatisiert das Verwalten, Skalieren und Bereitstellen von Containern verteilt auf mehreren Systemen. Hier können die mit Docker erzeugten Images ohne weiteren Aufwand verwendet werden. \medskip
+
+Im Gegensatz zu physischen Systemen oder virtuellen Maschinen, die darauf ausgelegt sind Daten von Anwendungen persistent zu speichern, müssen bei Containern dafür Vorkehrungen getroffen werden. Während Software zwar ohne nähere Konfiguration aus dem Docker Hub oder von einer anderen Registry gestartet werden kann, ist, um den Zustand einer Anwendung zu bewahren, ein Einbinden eines persistenten Speichers zur Sicherung der Daten nötig. Ohne diese Konfiguration sind die Daten, sobald ein Container abstürzt oder gestoppt wird, verloren. \medskip
+
+Docker und Kubernetes bieten daher inzwischen eine Vielzahl an Lösungen, um die Daten einer Anwendung persistent zu speichern. Diese basieren auf unterschiedlichen Technologien und bieten oft eine Reihe von Zusatzfunktionen, wie beispielsweise das Erstellen von Snapshots der gespeicherten Daten oder das automatisierte Erzeugen von Redundanzen, sodass die Auswahl der besten Lösung für die eigenen Anforderungen eine Herausforderung darstellt.
+
+%
+% Section: Motivation
+%
+%\section{Motivation}
+%\label{sec:intro:motivation}
+%Text
+
+%
+% Section: Motivation
+%
+\section{Zielsetzung} % (fold)
+\label{sec:ziel}
+Ziel dieser Bachelorthesis ist die Evaluation einer Speicherlösung für die persistente Datenspeicherung in einem bestehenden Kubernetes Cluster.
+Dafür werden zunächst die Anforderungen anhand von beispielhaften Anwendungsfällen analysiert und ein Anforderungskatalog, bestehend aus funktionalen und nichtfunktionalen Anforderungen, entworfen.
+Die in Kubernetes existierenden Möglichkeiten für eine persistente Datenspeicherung werden untersucht und die Anwendungen sowie die Technologie dahinter anhand des zuvor aufgestellten Anforderungskatalogs evaluiert.
+Abschließend wird, basierend auf den Ergebnissen, eine Handlungsempfehlung für das Cluster erstellt und umgesetzt.
+
+%
+% Section: Motivation
+%
+\section{Aufbau der Arbeit} % (fold)
+\label{sec:aufbau}
+Die Bachelorthesis ist in sechs Kapitel gegliedert. Das erste Kapitel bietet eine Einleitung in das Thema und erläutert die Ziele dieser Arbeit.
+Im zweiten Kapitel werden für ein Verständnis der Arbeit relevante Grundlagen wie Docker, Kubernetes und die persistente Datenspeicherung behandelt.
+Das dritte Kapitel widmet sich der Analyse der Anforderungen an die persistente Speicherung von Daten.
+Dafür werden für das bestehende Cluster Anwendungsfälle erarbeitet und basierend darauf die Anforderungen formuliert.
+Anschließend werden im vierten Kapitel, um eine Handlungsempfehlung zu verfassen, die in Kubernetes verfügbaren Lösungen evaluiert und anhand der Anforderungen bewertet.
+Im fünften Kapitel wird aufbauend auf den vorherigen Ergebnissen ein Konzept für die Umsetzung der Empfehlung für das aktuelle Cluster entworfen und umgesetzt.
+Das sechste Kapitel fasst die Ergebnisse dieser Thesis zusammen.
